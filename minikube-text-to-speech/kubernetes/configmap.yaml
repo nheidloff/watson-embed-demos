@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ibm-watson-tts-embed
+  labels:
+    app.kubernetes.io/name: "ibm-watson-tts-embed"
+    app.kubernetes.io/component: "runtime"
+    app.kubernetes.io/instance: "example"
+data:
+  env_config.json: |
+    {
+      "allowDashboard": false,
+      "anonymizeLogs": false,
+      "baseModelsSURL": {
+        "service": "localPath",
+        "urlSuffix": "var/catalog.json"
+      },
+      "clusterGroups": {
+          "default": {
+            "service_type": "text-to-speech",
+            "component": "runtime",
+            "dns": "ibm-watson-tts-embed",
+            "group": "default",
+            "models": [
+                "en-US_MichaelV3Voice",
+                "en-US_AllisonV3Voice"
+              ]
+          }
+      },
+      "defaultTTSVoice": "en-US_AllisonV3Voice",
+      "defaultVerbosity": "INFO",
+      "meteringEnabled": false,
+      "requireCookies": false,
+      "setCookies": false,
+      "serviceDependencies": {
+          "baseModelsStore": {
+            "type": "UrlService",
+            "healthCheckSuffix": "/",
+            "baseUrl": "http://127.0.0.1:3333/"
+        }
+      }
+    }
+
+  sessionPools.yaml: |
+    defaultPolicy: DefaultPolicy
+    sessionPoolPolicies:
+      PreWarmingPolicy:
+        - name: en-US_MichaelV3Voice
+        - name: en-US_AllisonV3Voice
+
+  sessionPools.py: |
+    class PreWarmingPolicy:
+        sessionPool = {
+            'minWarmSessions': 1,
+            'maxUseCount': 1000
+        }
+    class NoPreWarmingPolicy:
+        sessionPool = {
+            'maxUseCount': 1000
+        }
+    class DefaultPolicy:
+        sessionPool = {}
+
+  resourceRequirements.py: |
+    class WTTSDnnResourceRequirement:
+      resourceRequirement = {
+        'marginalMem' : 250*2**20, # 130 MB
+        'marginalCpu' : 40
+      }
+
+  prepareModels.sh: |
+    set -u
+
+    cleanup() {
+      local pids=$(jobs -pr)
+      if [ -n "$pids" ]; then
+        kill $pids
+      fi
+    }
+    trap "cleanup" SIGINT SIGQUIT SIGTERM EXIT
+
+    python -m http.server --bind 127.0.0.1 --directory /models 3333 &
+
+    ./runChuck.sh &
+
+    # wait for the server to become ready, which happens after it downloads the models
+    max_tries=10
+    tries=0
+    while [[ tries -lt max_tries ]]; do
+      curl -sk -o /dev/null "localhost:1080/v1/miniHealthCheck"
+      if [[ $? -eq 0 ]]; then
+        echo "Model initialization complete"
+        exit 0
+      fi
+
+      sleep 10
+      ((tries+=1))
+    done
+
+    echo "Server failed to initialize models in time."
+    exit 1
