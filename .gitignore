@@ -1,2 +1,6 @@
 .DS_Store
 READNIK.md
+
+text-classification/models/
+text-classification/ensemble_model
+text-classification/client-env
