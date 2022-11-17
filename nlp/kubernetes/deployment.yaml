@@ -13,7 +13,7 @@ spec:
         app: watson-nlp-runtime
     spec:
       initContainers:
-      - name: ensemble-model
+      - name: syntax-model
         image: cp.icr.io/cp/ai/watson-nlp_syntax_izumo_lang_en_stock:1.0.7
         volumeMounts:
         - name: model-directory
